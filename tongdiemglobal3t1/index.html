@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Trị - Sổ Điểm Cô Linda</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Quicksand', 'sans-serif'] },
+                    colors: {
+                        bamboo: { 50: '#f0fdf4', 500: '#22c55e', 600: '#16a34a' },
+                        sky: { 50: '#f0f9ff', 500: '#0ea5e9', 600: '#0284c7' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #f8fafc; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-slate-800 p-6 md:p-10 min-h-screen flex flex-col">
+
+    <div class="max-w-7xl mx-auto w-full flex-1 flex flex-col">
+        <!-- Header Quản Trị -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div class="flex items-center gap-4">
+                <div class="bg-sky-100 p-4 rounded-full text-3xl">👩‍🏫</div>
+                <div>
+                    <h1 class="text-3xl font-extrabold text-slate-800">Sổ Điểm Lớp Cô Linda</h1>
+                    <p class="text-slate-500 font-medium mt-1">Cập nhật kết quả học tập tự động từ xa</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="text-center px-4 border-r border-slate-200">
+                    <p class="text-xs font-bold text-slate-400 uppercase">Tổng lượt nộp</p>
+                    <p class="text-2xl font-black text-sky-600" id="total-submissions">0</p>
+                </div>
+                <button onclick="fetchResults()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center gap-2">
+                    <span id="refresh-icon">🔄</span> Làm mới dữ liệu
+                </button>
+            </div>
+        </header>
+
+        <!-- Bảng Kết Quả -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 text-sm uppercase tracking-wider">
+                            <th class="p-4 font-extrabold border-b border-slate-200 w-16 text-center">STT</th>
+                            <th class="p-4 font-extrabold border-b border-slate-200 w-48">Họ và Tên</th>
+                            <th class="p-4 font-extrabold border-b border-slate-200 w-32">Unit</th>
+                            <th class="p-4 font-extrabold border-b border-slate-200 w-32 text-center">Kết quả</th>
+                            <th class="p-4 font-extrabold border-b border-slate-200">Cần ôn tập / Lời khuyên</th>
+                            <th class="p-4 font-extrabold border-b border-slate-200 w-40 text-right">Thời gian nộp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-tbody" class="divide-y divide-slate-100">
+                        <!-- Dữ liệu sẽ được load vào đây -->
+                        <tr>
+                            <td colspan="6" class="p-10 text-center text-slate-400 font-medium">
+                                <div class="animate-pulse flex flex-col items-center gap-2">
+                                    <div class="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
+                                    Đang tải dữ liệu từ Supabase...
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // KẾT NỐI SUPABASE
+        const SUPABASE_URL = 'https://afpttabeioqthytdwduk.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmcHR0YWJlaW9xdGh5dGR3ZHVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjQ0NzcsImV4cCI6MjA5OTgwMDQ3N30.jlEFCUKQM5rWTM59rJnpvRjfh9Wkcoxt-fKqH__GtVU';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Chuyển đổi thời gian sang giờ Việt Nam
+        function formatDateTime(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' - ' + date.toLocaleDateString('vi-VN');
+        }
+
+        async function fetchResults() {
+            const tbody = document.getElementById('results-tbody');
+            const refreshIcon = document.getElementById('refresh-icon');
+            
+            // Hiệu ứng xoay nút refresh
+            refreshIcon.classList.add('animate-spin');
+
+            try {
+                // Lấy dữ liệu, sắp xếp bài nộp mới nhất lên đầu
+                const { data, error } = await supabaseClient
+                    .from('results')
+                    .select('*')
+                    .order('submitted_at', { ascending: false });
+
+                if (error) throw error;
+
+                document.getElementById('total-submissions').innerText = data.length;
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-500 italic">Chưa có học sinh nào nộp bài.</td></tr>`;
+                    return;
+                }
+
+                data.forEach((row, index) => {
+                    // Tô màu nổi bật nếu học sinh làm đúng hết
+                    const isPerfect = row.incorrect_count === 0;
+                    const rowClass = isPerfect ? 'bg-bamboo-50 hover:bg-bamboo-100 transition' : 'hover:bg-slate-50 transition';
+                    const scoreBadge = isPerfect 
+                        ? `<span class="bg-bamboo-500 text-white px-3 py-1 rounded-full font-bold text-sm shadow-sm">Đúng ${row.correct_count} câu</span>`
+                        : `<span class="bg-slate-200 text-slate-700 px-3 py-1 rounded-full font-bold text-sm">Đúng ${row.correct_count} / Sai ${row.incorrect_count}</span>`;
+
+                    const tr = document.createElement('tr');
+                    tr.className = rowClass;
+                    tr.innerHTML = `
+                        <td class="p-4 text-center font-bold text-slate-400">${index + 1}</td>
+                        <td class="p-4 font-extrabold text-sky-700 text-lg">${row.student_name}</td>
+                        <td class="p-4 font-bold text-slate-600">${row.unit}</td>
+                        <td class="p-4 text-center">${scoreBadge}</td>
+                        <td class="p-4 text-slate-600 text-sm leading-relaxed">${row.recommendations}</td>
+                        <td class="p-4 text-right text-sm font-medium text-slate-500">${formatDateTime(row.submitted_at)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+            } catch (err) {
+                console.error("Lỗi:", err);
+                tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-red-500 font-bold">Lỗi khi tải dữ liệu: ${err.message}</td></tr>`;
+            } finally {
+                // Tắt hiệu ứng xoay
+                setTimeout(() => refreshIcon.classList.remove('animate-spin'), 500);
+            }
+        }
+
+        // Tự động tải dữ liệu khi mở trang
+        window.onload = fetchResults;
+    </script>
+</body>
+</html>
